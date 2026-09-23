@@ -1,4 +1,4 @@
-# TanyaChaChum
+# TanyaChaCham
 
 Cited retrieval over Torah, Talmud and Chassidus. Answers link back to the
 source text; the system never asserts Torah in its own voice.

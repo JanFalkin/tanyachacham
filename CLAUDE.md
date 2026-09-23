@@ -1,4 +1,4 @@
-# TanyaChaChum — working notes for Claude
+# TanyaChaCham — working notes for Claude
 
 Cited retrieval over Torah, Talmud and Chassidus. Every answer links back to a
 source text. The system must never assert Torah in its own voice.

@@ -24,7 +24,7 @@ DB_PATH   = ROOT / "data" / "corpus.db"
 BOOKS_URL = ("https://raw.githubusercontent.com/Sefaria/Sefaria-Export/"
              "master/books.json")
 BOOKS     = ROOT / "data" / "books.json"
-UA        = "TanyaChaChum/0.1"
+UA        = "TanyaChaCham/0.1"
 
 # Sefaria's `language` is a script bucket; `actualLanguage` is the real code.
 SCRIPT = {"he": "hebrew", "yi": "hebrew", "arc": "hebrew", "jpa": "hebrew",

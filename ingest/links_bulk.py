@@ -22,7 +22,7 @@ LINK_DIR = ROOT / "data" / "links"
 BUCKET   = "https://storage.googleapis.com/sefaria-export"
 LIST_API = ("https://storage.googleapis.com/storage/v1/b/sefaria-export/o"
             "?prefix=links%2F&maxResults=200")
-UA       = "TanyaChaChum/0.1"
+UA       = "TanyaChaCham/0.1"
 
 csv.field_size_limit(10_000_000)
 

@@ -1,4 +1,4 @@
--- TanyaChaChum corpus store.
+-- TanyaChaCham corpus store.
 --
 -- Sefaria refs are the universal address space: every segment and every
 -- citation edge is keyed by a canonical Sefaria ref string.

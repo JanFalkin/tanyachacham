@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT    = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "corpus.db"
 BASE    = "https://www.sefaria.org"
-UA      = "TanyaChaChum/0.1 (corpus ingest; contact via project maintainer)"
+UA      = "TanyaChaCham/0.1 (corpus ingest; contact via project maintainer)"
 
 # Sefaria asks for courtesy; this keeps us well under any sane rate limit.
 SLEEP   = 0.35
