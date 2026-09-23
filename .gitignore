@@ -16,3 +16,6 @@ __pycache__/
 .venv/
 venv/
 .ipynb_checkpoints/
+
+# Local, uncommitted project context (people, strategy, this machine).
+CLAUDE.local.md

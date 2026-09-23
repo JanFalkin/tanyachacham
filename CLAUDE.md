@@ -63,7 +63,6 @@ the superseded API path, kept for reference only.
   work. Node names come from `flatten()`'s own traversal, not from a second
   parse of `schema`, so they match the refs by construction. 100% of the 3,029
   distinct Chasidut link work-names resolve.
-
 - **`CREATE TABLE IF NOT EXISTS` hides schema drift.** It is a silent no-op
   against a table that already exists, so a column added to `schema.sql` never
   reaches a live database — `works.base_work` was declared and missing for a
@@ -73,6 +72,15 @@ the superseded API path, kept for reference only.
   it first. Run it after editing `schema.sql`.
 - **`/api/index` does not report `isComplex`.** Probe by trying the simple
   fetch and falling back to `/api/shape/<title>`.
+- **Chassidic seforim are Hebrew, not Yiddish.** Tanya is loshon kodesh — 3
+  Yiddish function-word hits in 21,433 words. They were *taught* orally in
+  Yiddish but *written* in Hebrew. The sichos are the exception, so do not
+  generalise either way from one work.
+- **`actualLanguage` is authoritative but not always right.** The Tanya version
+  `Español Tanya 32` is filed upstream as `actualLanguage: "en"`. The corpus
+  has only 24 `es` rows, so Spanish sits inside the 80,948 `en` rows. Harmless
+  today; at embedding time a Spanish chunk retrieved as English is a citation
+  that looks right and reads wrong.
 
 ## Commands
 
