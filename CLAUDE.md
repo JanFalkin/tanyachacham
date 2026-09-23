@@ -16,8 +16,9 @@ working corpus is Torah, Talmud and Chassidus *today*, but the north star is the
 whole of Jewish thought. Read the phasing below as sequencing, not as the final
 scope; "a Chassidus tool" or "a Sefaria wrapper" understates the ambition.
 
-**Retrieval, not training.** The corpus is ~60–100M words (~2% of English
-Wikipedia, ~1.2GB of vectors). Far too small to train knowledge into a model,
+**Retrieval, not training.** The corpus is 366M words across all versions (290M
+Hebrew, 75M English) — ~8% of English Wikipedia; Chasidut plus what it cites is
+322K chunks, ~1.3GB of vectors. Far too small to train knowledge into a model,
 ideal for retrieval. A from-scratch model would reproduce the *cadence* of
 Chassidus while inventing sources — the one failure this corpus cannot absorb.
 `../train-llm-from-scratch` is a separate learning exercise; it is not this
@@ -99,6 +100,11 @@ the GPU packages will go:
     python -m ingest.bucket plan          # what would be ingested
     python -m ingest.bucket run           # all 11,657 versions, ~11 min
     python -m ingest.bucket run --category Chasidut --workers 12
+    python -m embed.chunk run --scope cited  # Chasidut + cited sections, ~2 min
+    python -m embed.bench                 # tokens/s per model on this GPU
+
+PyTorch is the cu126 build: the GTX 1060 (sm_61) is gone from newer CUDA
+builds. A Blackwell card (50-series) needs cu128+ instead.
 
 `data/` is gitignored and fully regenerable (~3GB). Never commit it.
 
@@ -114,8 +120,13 @@ Chasidut holds **zero** `yi` rows across its 216,446 texts. Sefaria's only
 Yiddish is Tanakh (Yehoyesh's translation, 23,109 rows) plus 18 Mishnah rows —
 so "no Yiddish" is true of Chassidus, not of Sefaria.
 
-Next: chunking and embeddings (GPU step; driver working) → retrieval with
-citation rendering → eval set (retrieval recall@k, citation accuracy).
+Chunked scope "cited": 322,011 chunks, 91.8M tokens (Hebrew ~2.0 tokens/word,
+English ~1.5), none over 512. Measured on the 1060: e5-base 7,800 tokens/s
+(3.3h for this scope), bge-m3 2,900 tokens/s (8.9h).
+
+Next: confirm eval/questions.jsonl (drafts, every ref checked against the
+text) → embed "cited" with both models → score recall@k → retrieval with
+citation rendering.
 
 ## Why chabad.org is load-bearing
 

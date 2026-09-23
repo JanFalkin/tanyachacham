@@ -184,8 +184,8 @@ def run(workers: int, category: str | None, limit: int) -> None:
             db.executemany("INSERT OR IGNORE INTO segments(ref,work,category,position)"
                            " VALUES (?,?,?,?)", segs)
             db.executemany("INSERT OR REPLACE INTO texts"
-                           "(ref,lang,script,version_title,source,body,words)"
-                           " VALUES (?,?,?,?,?,?,?)", txts)
+                           "(ref,lang,script,version_title,source,body,words,position)"
+                           " VALUES (?,?,?,?,?,?,?,?)", txts)
             db.commit()
             writes.task_done()
 
@@ -206,7 +206,7 @@ def run(workers: int, category: str | None, limit: int) -> None:
                 n = len(body.split()); w += n
                 segs.append((ref, work, cat, pos))
                 txts.append((ref, lang, SCRIPT.get(lang, "latin"), vtitle,
-                             "sefaria", body, n))
+                             "sefaria", body, n, pos))
             # Works go through even when this version carried no text, so a
             # work is never missing from the index because one version is empty.
             writes.put((segs, txts, works))

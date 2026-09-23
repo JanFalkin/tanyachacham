@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS segments (
     ref         TEXT PRIMARY KEY,   -- "Tanya, Part I; Likkutei Amarim 1:3"
     work        TEXT NOT NULL,
     category    TEXT,
-    position    INTEGER             -- ordinal within work, for context windows
+    position    INTEGER             -- NOT reading order: set by whichever version
+                                    -- landed first, and partial versions count
+                                    -- from their own start. Use texts.position.
 );
 
 -- One row per (segment, language, version). A sicha may carry a Yiddish
@@ -37,6 +39,8 @@ CREATE TABLE IF NOT EXISTS texts (
     source        TEXT,             -- 'sefaria' | 'chabad.org'
     body          TEXT NOT NULL,
     words         INTEGER,
+    position      INTEGER,          -- ordinal within THIS version's file: the only
+                                    -- reading order that holds for every version
     PRIMARY KEY (ref, lang, version_title)
 );
 
@@ -52,6 +56,24 @@ CREATE TABLE IF NOT EXISTS links (
     b_category  TEXT,
     link_type   TEXT,
     PRIMARY KEY (a_ref, b_ref)
+);
+
+-- Retrieval units, rebuilt wholesale by embed.chunk. A chunk is consecutive
+-- segments of ONE version inside one section (chapter, daf, verse), so it
+-- never spans two translations or two chapters. `spans` maps character ranges
+-- of `text` back to segment refs: retrieval matches the chunk, but the answer
+-- cites the exact segment. A segment too long for the model is split, and
+-- every piece cites the whole segment.
+CREATE TABLE IF NOT EXISTS chunks (
+    id            INTEGER PRIMARY KEY,   -- row index into data/vectors/*.npy
+    work          TEXT NOT NULL,
+    lang          TEXT NOT NULL,
+    version_title TEXT NOT NULL,
+    first_ref     TEXT NOT NULL,
+    last_ref      TEXT NOT NULL,
+    spans         TEXT NOT NULL,         -- JSON [[ref, start, end], ...]
+    text          TEXT NOT NULL,         -- normalized: no nikkud or ta'amim
+    tokens        INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS ingest_state (
