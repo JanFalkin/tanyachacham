@@ -1,0 +1,18 @@
+# Regenerable corpus data. All of this is rebuilt by:
+#   python -m ingest.links_bulk fetch && python -m ingest.links_bulk load
+#   python -m ingest.bucket run
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Embedding artifacts (added later)
+vectors/
+*.npy
+*.faiss
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
