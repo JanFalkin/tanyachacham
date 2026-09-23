@@ -19,6 +19,8 @@ import argparse, json, queue, sqlite3, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from store.migrate import migrate
+
 ROOT      = Path(__file__).resolve().parent.parent
 DB_PATH   = ROOT / "data" / "corpus.db"
 BOOKS_URL = ("https://raw.githubusercontent.com/Sefaria/Sefaria-Export/"
@@ -47,8 +49,15 @@ def daf(i: int) -> str:
     return f"{(i + 1) // 2}{'a' if i % 2 else 'b'}"
 
 
-def flatten(node, prefix, out, depth=0, talmud=False):
-    """Nested text arrays -> (ref, string) leaves, reproducing canonical refs."""
+def flatten(node, prefix, out, depth=0, talmud=False, nodes=None):
+    """Nested text arrays -> (ref, string) leaves, reproducing canonical refs.
+
+    `nodes`, if given, collects the node-qualified work titles passed through
+    ("Tanya, Part I; Likkutei Amarim"). The link CSV names works that way and
+    never by the base title, so those names have to become `works` rows for a
+    citation to resolve back to "Tanya". Collecting them here rather than from
+    `schema` keeps them identical to the refs by construction.
+    """
     if isinstance(node, str):
         if node.strip():
             out.append((prefix, node))
@@ -59,7 +68,7 @@ def flatten(node, prefix, out, depth=0, talmud=False):
                 nxt = f"{prefix} {label}"
             else:
                 nxt = f"{prefix}:{i}"
-            flatten(child, nxt, out, depth + 1, talmud)
+            flatten(child, nxt, out, depth + 1, talmud, nodes)
     elif isinstance(node, dict):
         # Complex work: keys are node titles, e.g. "Part I; Likkutei Amarim".
         # A blank key means an unnamed default node -- appending ", " there
@@ -67,7 +76,29 @@ def flatten(node, prefix, out, depth=0, talmud=False):
         # graph (canonical is "Likutei Moharan 272:1").
         for key, child in node.items():
             k = str(key).strip()
-            flatten(child, f"{prefix}, {k}" if k else prefix, out, 0, talmud)
+            nxt = f"{prefix}, {k}" if k else prefix
+            if k and nodes is not None:
+                nodes.append(nxt)
+            flatten(child, nxt, out, 0, talmud, nodes)
+
+
+def schema_nodes(schema, prefix="", he_prefix="", out=None):
+    """Walk `schema` -> [(node title, Hebrew node title)].
+
+    The text tree only shows nodes this version actually carries; the schema
+    is the work's real structure and is the only place node Hebrew titles
+    exist. Blank titles are skipped exactly as flatten() skips blank keys.
+    """
+    out = [] if out is None else out
+    for n in (schema or {}).get("nodes") or []:
+        en = str(n.get("enTitle") or "").strip()
+        he = str(n.get("heTitle") or "").strip()
+        title    = f"{prefix}, {en}" if (prefix and en) else (en or prefix)
+        he_title = f"{he_prefix}, {he}" if (he_prefix and he) else (he or he_prefix)
+        if en:
+            out.append((title, he_title or None))
+        schema_nodes(n, title, he_title, out)
+    return out
 
 
 TAGS = __import__("re").compile(r"<[^>]+>")
@@ -75,7 +106,13 @@ def clean(s: str) -> str:
     return TAGS.sub(" ", s).replace("&nbsp;", " ").strip()
 
 
-def parse_version(doc: dict) -> tuple[str, str, str, list[tuple[str, str]]]:
+def parse_version(doc: dict):
+    """-> (lang, version title, category, leaves, work rows).
+
+    The work rows are the base work followed by one row per node. Nodes carry
+    `base_work` so a link naming "Tanya, Part I; Likkutei Amarim" resolves to
+    "Tanya" with a join instead of a string heuristic.
+    """
     title  = doc.get("title") or ""
     cats   = doc.get("categories") or []
     talmud = "Talmud" in cats
@@ -84,8 +121,22 @@ def parse_version(doc: dict) -> tuple[str, str, str, list[tuple[str, str]]]:
               or {"he": "he", "en": "en"}.get(doc.get("language"), doc.get("language") or "??"))
     vtitle = doc.get("versionTitle") or "unknown"
     leaves: list[tuple[str, str]] = []
-    flatten(doc.get("text"), title, leaves, talmud=talmud)
-    return lang, vtitle, (cats[0] if cats else ""), leaves
+    nodes: list[str] = []
+    flatten(doc.get("text"), title, leaves, talmud=talmud, nodes=nodes)
+
+    cat      = cats[0] if cats else ""
+    cat_path = "/" + "/".join(cats) if cats else ""
+    # Schema nodes are the work's real structure and the only source of node
+    # Hebrew titles; text nodes catch anything this version has that the
+    # schema does not. Schema titles are relative, so qualify them with the
+    # base title the way flatten() does.
+    he_of = {f"{title}, {n}": he for n, he in schema_nodes(doc.get("schema"))}
+    names = list(he_of) + [n for n in dict.fromkeys(nodes) if n not in he_of]
+    complex_ = bool(names)
+
+    works = [(title, doc.get("heTitle") or None, cat, cat_path, int(complex_), None)]
+    works += [(n, he_of.get(n), cat, cat_path, 0, title) for n in names]
+    return lang, vtitle, cat, leaves, works
 
 
 def run(workers: int, category: str | None, limit: int) -> None:
@@ -96,6 +147,8 @@ def run(workers: int, category: str | None, limit: int) -> None:
         books = books[:limit]
     print(f"{len(books):,} version files to ingest "
           f"({len({b['title'] for b in books}):,} distinct works)", flush=True)
+
+    migrate(DB_PATH)
 
     db = sqlite3.connect(DB_PATH, check_same_thread=False)
     db.execute("PRAGMA journal_mode=WAL")
@@ -111,7 +164,18 @@ def run(workers: int, category: str | None, limit: int) -> None:
             item = writes.get()
             if item is None:
                 writes.task_done(); return
-            segs, txts = item
+            segs, txts, works = item
+            # Versions of one work disagree about metadata -- an English
+            # version has no heTitle, a partial one sees fewer nodes. Merge
+            # rather than letting whichever landed last win.
+            db.executemany(
+                "INSERT INTO works(title,he_title,category,cat_path,is_complex,base_work)"
+                " VALUES (?,?,?,?,?,?) ON CONFLICT(title) DO UPDATE SET"
+                "   he_title   = COALESCE(works.he_title, excluded.he_title),"
+                "   category   = COALESCE(NULLIF(works.category,''), excluded.category),"
+                "   cat_path   = COALESCE(NULLIF(works.cat_path,''), excluded.cat_path),"
+                "   is_complex = MAX(works.is_complex, excluded.is_complex),"
+                "   base_work  = COALESCE(works.base_work, excluded.base_work)", works)
             db.executemany("INSERT OR IGNORE INTO segments(ref,work,category,position)"
                            " VALUES (?,?,?,?)", segs)
             db.executemany("INSERT OR REPLACE INTO texts"
@@ -127,7 +191,7 @@ def run(workers: int, category: str | None, limit: int) -> None:
             req = urllib.request.Request(b["json_url"], headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=180) as r:
                 doc = json.load(r)
-            lang, vtitle, cat, leaves = parse_version(doc)
+            lang, vtitle, cat, leaves, works = parse_version(doc)
             work = b["title"]
             segs, txts, w = [], [], 0
             for pos, (ref, raw) in enumerate(leaves):
@@ -138,8 +202,9 @@ def run(workers: int, category: str | None, limit: int) -> None:
                 segs.append((ref, work, cat, pos))
                 txts.append((ref, lang, SCRIPT.get(lang, "latin"), vtitle,
                              "sefaria", body, n))
-            if segs:
-                writes.put((segs, txts))
+            # Works go through even when this version carried no text, so a
+            # work is never missing from the index because one version is empty.
+            writes.put((segs, txts, works))
             with lock:
                 stats["ok"] += 1; stats["segs"] += len(segs); stats["words"] += w
                 if stats["ok"] % 500 == 0:
@@ -155,7 +220,18 @@ def run(workers: int, category: str | None, limit: int) -> None:
         list(ex.map(fetch, books))
     writes.join(); writes.put(None); wt.join()
 
+    db.execute(
+        "INSERT INTO ingest_state(work,stage,segments,updated_at)"
+        " SELECT work,'text',COUNT(*),datetime('now') FROM segments GROUP BY work"
+        " ON CONFLICT(work) DO UPDATE SET stage=excluded.stage,"
+        "   segments=excluded.segments, updated_at=excluded.updated_at")
+    db.commit()
+
     print(f"\ndone in {time.time()-t0:.0f}s  ok={stats['ok']:,} fail={stats['fail']:,}", flush=True)
+    w, c = db.execute("SELECT COUNT(*), SUM(is_complex) FROM works"
+                      " WHERE base_work IS NULL").fetchone()
+    print(f"  works={w:,} ({c or 0:,} complex)  "
+          f"nodes={db.execute('SELECT COUNT(*) FROM works WHERE base_work IS NOT NULL').fetchone()[0]:,}")
     for lang, n, w in db.execute(
             "SELECT lang, COUNT(*), SUM(words) FROM texts GROUP BY lang ORDER BY 3 DESC"):
         print(f"  {lang:5s} rows={n:>9,}  words={w:>12,}")

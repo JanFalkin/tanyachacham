@@ -10,6 +10,12 @@ that a citation can be checked back to the text it came from.
 
 ## Decisions already made — do not relitigate
 
+**The end goal is the entirety of Jewish thought.** Sefaria (Phase 1) and
+chabad.org (Phase 2) are the first source systems, not the destination — the
+working corpus is Torah, Talmud and Chassidus *today*, but the north star is the
+whole of Jewish thought. Read the phasing below as sequencing, not as the final
+scope; "a Chassidus tool" or "a Sefaria wrapper" understates the ambition.
+
 **Retrieval, not training.** The corpus is ~60–100M words (~2% of English
 Wikipedia, ~1.2GB of vectors). Far too small to train knowledge into a model,
 ideal for retrieval. A from-scratch model would reproduce the *cadence* of
@@ -52,12 +58,30 @@ the superseded API path, kept for reference only.
   avoids double-counting.
 - **Link work names ≠ our work titles for complex texts.** The CSV carries the
   node title (`Tanya, Part I; Likkutei Amarim`), never the base (`Tanya`).
-  Joining on work identity needs a normalization pass — still TODO.
+  Fixed: `ingest/bucket.py` writes one `works` row per node carrying
+  `base_work`, so `COALESCE(base_work, title)` collapses a citation to its
+  work. Node names come from `flatten()`'s own traversal, not from a second
+  parse of `schema`, so they match the refs by construction. 100% of the 3,029
+  distinct Chasidut link work-names resolve.
+
+- **`CREATE TABLE IF NOT EXISTS` hides schema drift.** It is a silent no-op
+  against a table that already exists, so a column added to `schema.sql` never
+  reaches a live database — `works.base_work` was declared and missing for a
+  week, and the first symptom was `no such column`. `python -m store.migrate`
+  diffs the database against `schema.sql` (by executing it into `:memory:` and
+  comparing `PRAGMA table_info`) and adds what is missing. `bucket.run` calls
+  it first. Run it after editing `schema.sql`.
 - **`/api/index` does not report `isComplex`.** Probe by trying the simple
   fetch and falling back to `/api/shape/<title>`.
 
 ## Commands
 
+There is no system `python`, only `python3` — use the venv, which is also where
+the GPU packages will go:
+
+    python3 -m venv .venv && source .venv/bin/activate
+
+    python -m store.migrate               # reconcile DB with schema.sql
     python -m ingest.links_bulk fetch     # 700MB, 17 CSV shards, resumable
     python -m ingest.links_bulk load      # ~5.0M edges, ~15s
     python -m ingest.bucket plan          # what would be ingested
@@ -69,11 +93,18 @@ the superseded API path, kept for reference only.
 ## State
 
 Done: 5,043,902 citation edges loaded and indexed; Chasidut ingested
-(457 versions, 0 failures, 23s); language-versioned schema migrated.
+(457 versions, 0 failures, 30s); language-versioned schema migrated;
+`works` populated by the bucket path with `base_work` node rows, so work-name
+normalization is done rather than pending.
 
-Next: full 19,754-version ingest → work-name normalization → chunking and
-embeddings (GPU step) → retrieval with citation rendering → eval set
-(retrieval recall@k, citation accuracy).
+Corpus holds **zero** `yi` rows across all 432,630 texts — empirical
+confirmation that Sefaria carries no Yiddish material, not an inference from
+version metadata.
+
+Next: full 19,754-version ingest (Halakhah 5,272 / Talmud 4,526 / Mishnah
+3,280 / Tanakh 3,176 are the bulk) → chunking and embeddings (GPU step) →
+retrieval with citation rendering → eval set (retrieval recall@k, citation
+accuracy).
 
 ## Why chabad.org is load-bearing
 
