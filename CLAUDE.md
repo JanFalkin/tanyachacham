@@ -102,6 +102,7 @@ the GPU packages will go:
     python -m ingest.bucket run --category Chasidut --workers 12
     python -m embed.chunk run --scope cited  # Chasidut + cited sections, ~2 min
     python -m embed.bench                 # tokens/s per model on this GPU
+    python -m embed.embed --model BAAI/bge-m3   # resumable, heat-guarded
 
 PyTorch is the cu126 build: the GTX 1060 (sm_61) is gone from newer CUDA
 builds. A Blackwell card (50-series) needs cu128+ instead.
