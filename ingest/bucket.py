@@ -41,7 +41,12 @@ def load_books() -> list[dict]:
         with urllib.request.urlopen(req, timeout=120) as r, open(BOOKS, "wb") as f:
             f.write(r.read())
     d = json.loads(BOOKS.read_text())
-    return d["books"] if isinstance(d, dict) else d
+    books = d["books"] if isinstance(d, dict) else d
+    # books.json lists merged.json beside the real versions (8,097 of 19,754
+    # entries), tagged versionTitle "merged". They carry no actualLanguage, so
+    # ingesting them duplicates text under the script bucket -- the exact
+    # failure the module docstring describes. Drop them here, at the source.
+    return [b for b in books if b.get("versionTitle") != "merged"]
 
 
 def daf(i: int) -> str:

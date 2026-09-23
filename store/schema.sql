@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS texts (
     ref           TEXT NOT NULL REFERENCES segments(ref),
     lang          TEXT NOT NULL,    -- ISO 639: he, yi, arc, en, de, fr, ru, ...
     script        TEXT,             -- hebrew | latin | cyrillic
-    version_title TEXT NOT NULL,    -- "Kehot Publication Society", "merged", ...
+    version_title TEXT NOT NULL,    -- "Kehot Publication Society", ... never "merged"
     source        TEXT,             -- 'sefaria' | 'chabad.org'
     body          TEXT NOT NULL,
     words         INTEGER,

@@ -70,6 +70,10 @@ the superseded API path, kept for reference only.
   diffs the database against `schema.sql` (by executing it into `:memory:` and
   comparing `PRAGMA table_info`) and adds what is missing. `bucket.run` calls
   it first. Run it after editing `schema.sql`.
+- **`books.json` lists `merged.json` as if it were a version.** 8,097 of its
+  19,754 entries have `versionTitle: "merged"`. Ingesting them doubled every
+  word count (the first Chassidus figures were exactly 2× too high) and filed
+  text under the script bucket. `load_books()` drops them; keep it that way.
 - **`/api/index` does not report `isComplex`.** Probe by trying the simple
   fetch and falling back to `/api/shape/<title>`.
 - **Chassidic seforim are Hebrew, not Yiddish.** Tanya is loshon kodesh — 3
@@ -93,33 +97,33 @@ the GPU packages will go:
     python -m ingest.links_bulk fetch     # 700MB, 17 CSV shards, resumable
     python -m ingest.links_bulk load      # ~5.0M edges, ~15s
     python -m ingest.bucket plan          # what would be ingested
-    python -m ingest.bucket run           # all 19,754 versions, ~15-20 min
+    python -m ingest.bucket run           # all 11,657 versions, ~11 min
     python -m ingest.bucket run --category Chasidut --workers 12
 
 `data/` is gitignored and fully regenerable (~3GB). Never commit it.
 
 ## State
 
-Done: 5,043,902 citation edges loaded and indexed; Chasidut ingested
-(457 versions, 0 failures, 30s); language-versioned schema migrated;
-`works` populated by the bucket path with `base_work` node rows, so work-name
-normalization is done rather than pending.
+Done: 5,043,902 citation edges loaded and indexed; full Sefaria corpus
+ingested (11,657 versions, 6,462 works, 0 failures, ~11 min) — 5,054,293 text
+rows over 3,486,015 segments, 290.6M Hebrew and 75.3M English words;
+language-versioned schema migrated; `works` populated with `base_work` node
+rows, so work-name normalization is done rather than pending.
 
-Corpus holds **zero** `yi` rows across all 432,630 texts — empirical
-confirmation that Sefaria carries no Yiddish material, not an inference from
-version metadata.
+Chasidut holds **zero** `yi` rows across its 216,446 texts. Sefaria's only
+Yiddish is Tanakh (Yehoyesh's translation, 23,109 rows) plus 18 Mishnah rows —
+so "no Yiddish" is true of Chassidus, not of Sefaria.
 
-Next: full 19,754-version ingest (Halakhah 5,272 / Talmud 4,526 / Mishnah
-3,280 / Tanakh 3,176 are the bulk) → chunking and embeddings (GPU step) →
-retrieval with citation rendering → eval set (retrieval recall@k, citation
-accuracy).
+Next: chunking and embeddings (GPU step; driver working) → retrieval with
+citation rendering → eval set (retrieval recall@k, citation accuracy).
 
 ## Why chabad.org is load-bearing
 
-Sefaria's Chassidus is 40.3M Hebrew words against 7.1M English — **5.6:1, under
-18% translated**. *Chanah Ariel* (754K words), *Sha'arei Avodah* (342K) and
-others are 0%. *Etz Chaim*, the central Arizal text, is absent entirely. No
-Yiddish material is present at all.
+Sefaria's Chassidus is 20.4M Hebrew words against 3.5M English — **5.8:1, under
+18% translated**. *Chanah Ariel* (377K words), *Sha'arei Avodah* (171K) and
+others are 0%. *Sefer Etz Chaim*, the central Arizal text, is filed under
+Kabbalah: 344K Hebrew words, 30K English (~9%). No Yiddish Chassidus is present
+at all.
 
 Three distinct gaps, not one: Yiddish sichos, English Chassidus, and
 Arizal/Kabbalah. Phase 2 exists to close them.
