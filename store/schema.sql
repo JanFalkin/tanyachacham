@@ -37,8 +37,10 @@ CREATE TABLE IF NOT EXISTS texts (
     script        TEXT,             -- hebrew | latin | cyrillic
     version_title TEXT NOT NULL,    -- "Kehot Publication Society", ... never "merged"
     source        TEXT,             -- 'sefaria' | 'chabad.org'
-    body          TEXT NOT NULL,
-    words         INTEGER,
+    body          TEXT NOT NULL,    -- the publisher's text, footnotes removed
+    notes         TEXT,             -- JSON [[marker, note], ...] of the translator's
+                                    -- footnotes, or NULL; never embedded as the text
+    words         INTEGER,          -- of body only
     position      INTEGER,          -- ordinal within THIS version's file: the only
                                     -- reading order that holds for every version
     PRIMARY KEY (ref, lang, version_title)

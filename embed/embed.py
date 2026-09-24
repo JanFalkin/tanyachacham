@@ -45,16 +45,25 @@ SLICE   = 256       # chunks between heat checks: ~10s on e5-base, ~25s on bge-m
 
 
 def gpu_stats() -> tuple[float | None, float | None, float | None]:
-    """-> (temp C, power W, utilization %) from nvidia-smi, or Nones."""
+    """-> (temp C, power W, utilization %) from nvidia-smi, each None if
+    unreadable. Fields are parsed one by one: the 4060 in the dock reports
+    power.draw as "[N/A]", and parsing all three together turned that into a
+    missing temperature -- a heat guard that could never trip."""
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=temperature.gpu,power.draw,utilization.gpu",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=10).stdout
-        t, w, u = (float(x) for x in out.splitlines()[0].split(","))
-        return t, w, u
+        fields = out.splitlines()[0].split(",")
     except Exception:
         return None, None, None
+    def num(x):
+        try:
+            return float(x)
+        except ValueError:
+            return None
+    t, w, u = (num(x) for x in (fields + [""] * 3)[:3])
+    return t, w, u
 
 
 def cpu_temp() -> float | None:
@@ -157,8 +166,9 @@ def main(model_name: str, shard: int, gpu_max: float, cpu_max: float,
     guard.start()
     # Work must not start before the first reading: in a hot room the first
     # slice would otherwise run unguarded (this happened in testing).
-    if not guard.ready.wait(60):
-        raise SystemExit("no temperature reading within 60s -- not starting blind")
+    if not guard.ready.wait(60) or guard.last[0] is None:
+        guard.stop.set()
+        raise SystemExit("no GPU temperature reading -- not starting blind")
     t0, done_now = time.time(), 0
     try:
         for s in todo:

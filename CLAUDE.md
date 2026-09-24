@@ -16,9 +16,9 @@ working corpus is Torah, Talmud and Chassidus *today*, but the north star is the
 whole of Jewish thought. Read the phasing below as sequencing, not as the final
 scope; "a Chassidus tool" or "a Sefaria wrapper" understates the ambition.
 
-**Retrieval, not training.** The corpus is 366M words across all versions (290M
-Hebrew, 75M English) — ~8% of English Wikipedia; Chasidut plus what it cites is
-322K chunks, ~1.3GB of vectors. Far too small to train knowledge into a model,
+**Retrieval, not training.** The corpus is 368M words across all versions (285M
+Hebrew, 68M English) — ~8% of English Wikipedia; Chasidut plus what it cites is
+361K chunks, ~1.5GB of vectors. Far too small to train knowledge into a model,
 ideal for retrieval. A from-scratch model would reproduce the *cadence* of
 Chassidus while inventing sources — the one failure this corpus cannot absorb.
 `../train-llm-from-scratch` is a separate learning exercise; it is not this
@@ -46,6 +46,14 @@ and every query is normalized the same way (`embed.chunk.normalize`): English
 translations mostly write "God" (55K) against 5.6K "G-d" split over three dash
 characters, so without it the question and the text disagree. The displayed
 source text (`texts.body`) is never altered — a citation quotes the publisher.
+
+**Footnotes are not the text.** Sefaria inlines a translator's footnote inside
+the segment (`<sup class="footnote-marker">` + `<i class="footnote">`, which
+may nest `<i>`). Stripping tags alone put the note mid-sentence in
+`texts.body`, where a quotation presents the translator's gloss as the
+source. `ingest.bucket.split_notes` moves them to `texts.notes` (JSON
+`[[marker, note], ...]`); `body` and `words` are the text alone. It was 7.7M
+of the 75.3M English words, across 249,642 rows.
 
 **Bucket, not API.** The GCS export has no rate limit and parallelises:
 457 versions in 23s, versus hours of `/api/texts` calls. `ingest/sefaria.py` is
@@ -88,6 +96,10 @@ the superseded API path, kept for reference only.
   Yiddish function-word hits in 21,433 words. They were *taught* orally in
   Yiddish but *written* in Hebrew. The sichos are the exception, so do not
   generalise either way from one work.
+- **The 4060 reports `power.draw` as `[N/A]`.** `gpu_stats()` parsed all
+  three nvidia-smi fields at once, so one N/A made the temperature None and
+  the GPU heat guard could never trip — silently. Fields now parse one by
+  one, and `embed.embed` refuses to start without a GPU temperature.
 - **`actualLanguage` is authoritative but not always right.** The Tanya version
   `Español Tanya 32` is filed upstream as `actualLanguage: "en"`. The corpus
   has only 24 `es` rows, so Spanish sits inside the 80,948 `en` rows. Harmless
@@ -119,8 +131,9 @@ builds. A Blackwell card (50-series) needs cu128+ instead.
 ## State
 
 Done: 5,043,902 citation edges loaded and indexed; full Sefaria corpus
-ingested (11,657 versions, 6,462 works, 0 failures, ~11 min) — 5,054,293 text
-rows over 3,486,015 segments, 290.6M Hebrew and 75.3M English words;
+ingested (11,657 versions, 6,462 works, 0 failures, ~9 min) — 5,054,293 text
+rows over 3,486,015 segments, 284.6M Hebrew and 67.6M English words with
+footnotes split out;
 language-versioned schema migrated; `works` populated with `base_work` node
 rows, so work-name normalization is done rather than pending.
 
@@ -128,9 +141,11 @@ Chasidut holds **zero** `yi` rows across its 216,446 texts. Sefaria's only
 Yiddish is Tanakh (Yehoyesh's translation, 23,109 rows) plus 18 Mishnah rows —
 so "no Yiddish" is true of Chassidus, not of Sefaria.
 
-Chunked scope "cited": 322,011 chunks, 91.8M tokens (Hebrew ~2.0 tokens/word,
-English ~1.5), none over 512. Measured on the 1060: e5-base 7,800 tokens/s
-(3.3h for this scope), bge-m3 2,900 tokens/s (8.9h).
+Chunked scope "cited": 360,514 chunks, 87.4M tokens (Hebrew ~2.0 tokens/word,
+English ~1.5), none over 512. Talmud (incl. Rashi/Tosafot on it) is windowed
+at 192 tokens, everything else at 384; an over-long segment is cut into equal
+pieces, not a full piece plus a scrap. (Before footnotes were split out and
+Talmud windows shrank: 322,011 chunks, 91.8M tokens.)
 
 Embedded "cited" with both models on the 1060 (e5-base 3.2h, bge-m3 8.6h,
 GPU max 68°C, no heat pauses). Scored on the 10 draft questions: bge-m3
@@ -147,13 +162,27 @@ RTX 4060 8GB installed (sm_89, driver 580, same cu126 build, PCIe 4.0 x4).
     e5-base        30,375     102,519       0.2    min cos 0.9995, top-10 kept 97.9%
     bge-m3          9,268      32,571       0.8    min cos 0.9997, top-10 kept 99.5%
 
-FP16 (`embed.embed --fp16`) is the plan on this card. The neighbour swaps are
-presumably near-ties at the rank-10 boundary, not yet checked; confirm on the
-eval set after re-embedding.
+Re-embedded the new chunks in FP16 on the 4060 (e5-base ~15 min, bge-m3
+~45 min, GPU max 61°C, no heat pauses). Old vectors kept in
+`data/vectors-1060-2026-09-23/` (they pair with the old chunks, so they can
+no longer be scored). On the 10 draft questions:
 
-Next: strip inline footnotes and use smaller Talmud windows in `embed.chunk`
-→ re-chunk, re-embed both models in fp16, re-score → fold in Meir's review of
-eval/questions.jsonl.
+    model     before (1060, old chunks)   now (4060 fp16, new chunks)
+              R@1   R@10  MRR             R@1   R@5   R@10  MRR
+    bge-m3    0.40  0.60  0.50            0.20  0.70  0.70  0.46
+    e5-base   0.30  0.50  0.37            0.50  0.50  0.60  0.53
+
+Berakhot 61b:2 went from rank 213 to 2 under bge-m3 (8 under e5): the Talmud
+windows did what they were for. bge-m3 now has five questions at rank 2 --
+beaten by a neighbouring source on the same idea (Zohar on the three
+garments, Eruvin 54a on Deut 30:14, Flames of Faith on two souls). Whether
+those count as hits is a judgment for the eval review, and 10 questions still
+cannot choose a model. Weak everywhere: t006 (joy; only Tanya counted, >100)
+and t010 (the Hebrew "beinoni" question; bge-m3 27, e5 >100).
+
+Next: fold in Meir's review of eval/questions.jsonl, and widen the eval set
+well beyond 10 questions -- the next change to chunking or model should be
+chosen by it, not by these ten.
 
 ## Why chabad.org is load-bearing
 

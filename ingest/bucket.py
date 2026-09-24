@@ -15,7 +15,7 @@ Usage:
 """
 from __future__ import annotations
 
-import argparse, json, queue, sqlite3, threading, time, urllib.request
+import argparse, json, queue, re, sqlite3, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -106,9 +106,47 @@ def schema_nodes(schema, prefix="", he_prefix="", out=None):
     return out
 
 
-TAGS = __import__("re").compile(r"<[^>]+>")
+TAGS = re.compile(r"<[^>]+>")
 def clean(s: str) -> str:
-    return TAGS.sub(" ", s).replace("&nbsp;", " ").strip()
+    return " ".join(TAGS.sub(" ", s).replace("&nbsp;", " ").split())
+
+
+# Sefaria inlines a translator's footnote as
+#   word<sup class="footnote-marker">1</sup><i class="footnote">note</i>
+# and the note may itself contain <i>...</i>. Stripping tags alone leaves the
+# note mid-sentence in the body, where a quotation would present the
+# translator's gloss as the text. 233K notes sit in the "cited" scope alone.
+TAG      = re.compile(r"<(/?)(\w+)([^>]*)>")
+IS_NOTE  = re.compile(r"""class\s*=\s*["']footnote["']""")
+IS_MARK  = re.compile(r"""class\s*=\s*["']footnote-marker["']""")
+
+
+def split_notes(raw: str) -> tuple[str, list[list[str]]]:
+    """-> (text with notes and markers removed, [[marker, note], ...]).
+    Nesting is tracked per tag name, so an <i> inside a note does not end it.
+    An unclosed note runs to the end of the segment."""
+    body, notes, at, mark = [], [], 0, ""
+    for m in TAG.finditer(raw):
+        if m.start() < at:
+            continue                       # inside a note or marker just consumed
+        close, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        if close or not (IS_NOTE.search(attrs) or IS_MARK.search(attrs)):
+            continue
+        depth, end = 1, len(raw)
+        for n in TAG.finditer(raw, m.end()):
+            if n.group(2).lower() == name:
+                depth += -1 if n.group(1) else 1
+                if depth == 0:
+                    end = n.start(); break
+        inner = raw[m.end():end]
+        body.append(raw[at:m.start()])
+        at = raw.find(">", end) + 1 if end < len(raw) else len(raw)
+        if IS_MARK.search(attrs):
+            mark = clean(inner)
+        else:
+            notes.append([mark, clean(inner)]); mark = ""
+    body.append(raw[at:])
+    return "".join(body), notes
 
 
 def parse_version(doc: dict):
@@ -184,8 +222,8 @@ def run(workers: int, category: str | None, limit: int) -> None:
             db.executemany("INSERT OR IGNORE INTO segments(ref,work,category,position)"
                            " VALUES (?,?,?,?)", segs)
             db.executemany("INSERT OR REPLACE INTO texts"
-                           "(ref,lang,script,version_title,source,body,words,position)"
-                           " VALUES (?,?,?,?,?,?,?,?)", txts)
+                           "(ref,lang,script,version_title,source,body,notes,words,position)"
+                           " VALUES (?,?,?,?,?,?,?,?,?)", txts)
             db.commit()
             writes.task_done()
 
@@ -200,13 +238,16 @@ def run(workers: int, category: str | None, limit: int) -> None:
             work = b["title"]
             segs, txts, w = [], [], 0
             for pos, (ref, raw) in enumerate(leaves):
-                body = clean(raw)
-                if not body:
+                body, notes = split_notes(raw)
+                body = clean(body)
+                if not body and not notes:
                     continue
                 n = len(body.split()); w += n
                 segs.append((ref, work, cat, pos))
                 txts.append((ref, lang, SCRIPT.get(lang, "latin"), vtitle,
-                             "sefaria", body, n, pos))
+                             "sefaria", body,
+                             json.dumps(notes, ensure_ascii=False) if notes else None,
+                             n, pos))
             # Works go through even when this version carried no text, so a
             # work is never missing from the index because one version is empty.
             writes.put((segs, txts, works))
@@ -216,9 +257,13 @@ def run(workers: int, category: str | None, limit: int) -> None:
                     print(f"  {stats['ok']:>6,}/{len(books):,} versions  "
                           f"segs={stats['segs']:>9,}  words={stats['words']:>11,}  "
                           f"fail={stats['fail']}", flush=True)
-        except Exception:
+        except Exception as e:
+            # A failed version keeps whatever rows an earlier run left, so it
+            # must be named, not just counted.
             with lock:
                 stats["fail"] += 1
+            print(f"  FAIL {b['title']} | {b.get('versionTitle')} | "
+                  f"{type(e).__name__}: {e}", flush=True)
 
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=workers) as ex:
