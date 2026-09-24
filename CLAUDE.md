@@ -140,11 +140,20 @@ within a daf (Berakhot 61b:2 sits after the organs passage, rank 213),
 (2) inline footnotes in Sefaria English, (3) dash variants of "G-d" — the
 "G-d" normalization is committed but the stored vectors predate it.
 
-Next: swap the GTX 1060 for the RTX 4060 8GB (same driver and cu126 build;
-verify `torch.cuda.get_device_name`, re-run `embed.bench`, and add an FP16
-option — Ada's speed is in half precision) → strip inline footnotes and use
-smaller Talmud windows in `embed.chunk` → re-chunk, re-embed both models,
-re-score → fold in Meir's review of eval/questions.jsonl.
+RTX 4060 8GB installed (sm_89, driver 580, same cu126 build, PCIe 4.0 x4).
+`embed.bench` on the "cited" scope, 2,000-chunk sample:
+
+    model      fp32 tok/s  fp16 tok/s  fp16 hours  fp16 vs fp32
+    e5-base        30,375     102,519       0.2    min cos 0.9995, top-10 kept 97.9%
+    bge-m3          9,268      32,571       0.8    min cos 0.9997, top-10 kept 99.5%
+
+FP16 (`embed.embed --fp16`) is the plan on this card. The neighbour swaps are
+presumably near-ties at the rank-10 boundary, not yet checked; confirm on the
+eval set after re-embedding.
+
+Next: strip inline footnotes and use smaller Talmud windows in `embed.chunk`
+→ re-chunk, re-embed both models in fp16, re-score → fold in Meir's review of
+eval/questions.jsonl.
 
 ## Why chabad.org is load-bearing
 

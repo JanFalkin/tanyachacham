@@ -15,12 +15,16 @@ that has hung once. So:
     rebuilt, old shards would silently pair vectors with the wrong text -- a
     wrong citation -- so the run refuses to resume against them.
 
+  - Precision. --fp16 runs the model in half precision (Ada and later; not
+    Pascal). Stored vectors are float32 either way. The dtype is in
+    meta.json, so a run cannot resume with shards from the other precision.
+
 Row i of the concatenated shards is chunks.id = i. Vectors are L2-normalized,
 so cosine similarity is a dot product.
 
 Usage:
     python -m embed.embed --model intfloat/multilingual-e5-base
-    python -m embed.embed --model BAAI/bge-m3
+    python -m embed.embed --model BAAI/bge-m3 --fp16
     python -m embed.embed --model ... --limit 600    # smoke test, separate dir
 Watch:
     tail -f data/vectors/<model>/temps.csv
@@ -32,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
-from embed.bench import PREFIX
+from embed.bench import PREFIX, load
 
 ROOT    = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "corpus.db"
@@ -114,7 +118,7 @@ def fingerprint(db: sqlite3.Connection) -> tuple[int, str]:
 
 
 def main(model_name: str, shard: int, gpu_max: float, cpu_max: float,
-         limit: int, batch: int) -> None:
+         limit: int, batch: int, dtype: str = "fp32") -> None:
     db = sqlite3.connect(DB_PATH)
     n, fp = fingerprint(db)
     if not n:
@@ -124,10 +128,12 @@ def main(model_name: str, shard: int, gpu_max: float, cpu_max: float,
     out = OUT / (model_name.replace("/", "__") + ("-smoke" if limit else ""))
     out.mkdir(parents=True, exist_ok=True)
 
-    meta = {"model": model_name, "chunks": n, "fingerprint": fp, "shard": shard}
+    meta = {"model": model_name, "chunks": n, "fingerprint": fp, "shard": shard,
+            "dtype": dtype}
     mp = out / "meta.json"
     if mp.exists():
         old = json.loads(mp.read_text())
+        old.setdefault("dtype", "fp32")     # written before --fp16 existed
         if {k: old.get(k) for k in meta} != meta:
             raise SystemExit(f"{out} holds vectors for different chunks or settings"
                              f" -- delete it to start over.\n  on disk: {old}\n  now:     {meta}")
@@ -138,14 +144,12 @@ def main(model_name: str, shard: int, gpu_max: float, cpu_max: float,
     size = lambda s: min((s + 1) * shard, n) - s * shard
     todo = [s for s in shards if not (out / f"{s:05d}.npy").exists()]
     remaining = sum(size(s) for s in todo)
-    print(f"{model_name}: {n:,} chunks in {len(shards)} shards, "
+    print(f"{model_name} ({dtype}): {n:,} chunks in {len(shards)} shards, "
           f"{len(shards) - len(todo)} already done, {remaining:,} chunks to go", flush=True)
     if not todo:
         return
 
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(model_name, device="cuda")
-    model.max_seq_length = 512
+    model = load(model_name, dtype)
     prefix = PREFIX.get(model_name, "")
 
     guard = HeatGuard(out / "temps.csv", gpu_max, cpu_max)
@@ -196,5 +200,7 @@ if __name__ == "__main__":
     ap.add_argument("--gpu-max", type=float, default=80)
     ap.add_argument("--cpu-max", type=float, default=90)
     ap.add_argument("--limit", type=int, default=0, help="smoke test: first N chunks")
+    ap.add_argument("--fp16", action="store_true", help="half precision (Ada or later)")
     a = ap.parse_args()
-    main(a.model, a.shard, a.gpu_max, a.cpu_max, a.limit, a.batch)
+    main(a.model, a.shard, a.gpu_max, a.cpu_max, a.limit, a.batch,
+         "fp16" if a.fp16 else "fp32")
