@@ -46,9 +46,20 @@ MARKS = re.compile(r"[֑-ֽֿ-ׂׄ-ׇ]")
 SECTION = re.compile(r"^(.*?)[ :](\d+[ab]?)$")
 RANGE_END = re.compile(r"-[\d:ab]+$")
 
+# The Divine Name in the embedded copy follows Chabad convention: "G-d".
+# English translations mostly write "God" (55K) and the rest split "G-d"
+# across three dash characters; a Chabad user types "G-d". Capitalized only --
+# "gods" are idols. "Lord" is left as written.
+DASHES = re.compile(r"[‐-―−]")
+GOD    = re.compile(r"\b(?:God|GOD)(ly|liness|head)?\b")
+
 
 def normalize(s: str) -> str:
+    """The embedded copy of a text, and of every query, so both sides agree.
+    Never the displayed text: `texts.body` keeps the publisher's wording."""
     s = MARKS.sub("", s.replace("־", " "))   # maqaf joins two words
+    s = DASHES.sub("-", s)
+    s = GOD.sub(lambda m: "G-d" + (m.group(1) or ""), s)
     return " ".join(s.split())
 
 

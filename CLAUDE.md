@@ -40,6 +40,13 @@ and keeps only the script bucket, so a "Hebrew" merged file can silently absorb
 Yiddish with no way to separate it. It also destroys the Kehot-vs-Sefaria
 translation distinction.
 
+**The Divine Name is "G-d"** in everything the system writes in its own
+voice, following Chabad convention. "Lord" stays as written. The *embedded* copy of every text
+and every query is normalized the same way (`embed.chunk.normalize`): English
+translations mostly write "God" (55K) against 5.6K "G-d" split over three dash
+characters, so without it the question and the text disagree. The displayed
+source text (`texts.body`) is never altered — a citation quotes the publisher.
+
 **Bucket, not API.** The GCS export has no rate limit and parallelises:
 457 versions in 23s, versus hours of `/api/texts` calls. `ingest/sefaria.py` is
 the superseded API path, kept for reference only.
