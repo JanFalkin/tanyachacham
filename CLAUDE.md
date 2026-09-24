@@ -132,9 +132,19 @@ Chunked scope "cited": 322,011 chunks, 91.8M tokens (Hebrew ~2.0 tokens/word,
 English ~1.5), none over 512. Measured on the 1060: e5-base 7,800 tokens/s
 (3.3h for this scope), bge-m3 2,900 tokens/s (8.9h).
 
-Next: confirm eval/questions.jsonl (drafts, every ref checked against the
-text) → embed "cited" with both models → score recall@k → retrieval with
-citation rendering.
+Embedded "cited" with both models on the 1060 (e5-base 3.2h, bge-m3 8.6h,
+GPU max 68°C, no heat pauses). Scored on the 10 draft questions: bge-m3
+recall@1 0.40 / @10 0.60 / MRR 0.50; e5-base 0.30 / 0.50 / 0.37. Too few
+questions to choose a model. Misses traced to (1) chunks mixing topics
+within a daf (Berakhot 61b:2 sits after the organs passage, rank 213),
+(2) inline footnotes in Sefaria English, (3) dash variants of "G-d" — the
+"G-d" normalization is committed but the stored vectors predate it.
+
+Next: swap the GTX 1060 for the RTX 4060 8GB (same driver and cu126 build;
+verify `torch.cuda.get_device_name`, re-run `embed.bench`, and add an FP16
+option — Ada's speed is in half precision) → strip inline footnotes and use
+smaller Talmud windows in `embed.chunk` → re-chunk, re-embed both models,
+re-score → fold in Meir's review of eval/questions.jsonl.
 
 ## Why chabad.org is load-bearing
 
