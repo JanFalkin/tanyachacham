@@ -122,6 +122,8 @@ the GPU packages will go:
     python -m embed.chunk run --scope cited  # Chasidut + cited sections, ~2 min
     python -m embed.bench                 # tokens/s per model on this GPU
     python -m embed.embed --model BAAI/bge-m3   # resumable, heat-guarded
+    python -m eval.score                  # recall/MRR on eval/questions.jsonl
+    python -m search.query "What are the seven Noahide laws?" [--category Chasidut] [--work Tanya] [--lang en]
 
 PyTorch is the cu126 build: the GTX 1060 (sm_61) is gone from newer CUDA
 builds. A Blackwell card (50-series) needs cu128+ instead.
