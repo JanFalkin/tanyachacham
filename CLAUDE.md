@@ -182,14 +182,15 @@ those count as hits is a judgment for the eval review, and 10 questions still
 cannot choose a model. Weak everywhere: t006 (joy; only Tanya counted, >100)
 and t010 (the Hebrew "beinoni" question; bge-m3 27, e5 >100).
 
-Next: fold in Meir's review of eval/questions.jsonl, and widen the eval set
+Next: fold in the rabbinic review of eval/questions.jsonl, and widen the eval set
 well beyond 10 questions -- the next change to chunking or model should be
 chosen by it, not by these ten.
 
 ## Why chabad.org is load-bearing
 
-Sefaria's Chassidus is 20.4M Hebrew words against 3.5M English — **5.8:1, under
-18% translated**. *Chanah Ariel* (377K words), *Sha'arei Avodah* (171K) and
+Sefaria's Chassidus is 20.2M Hebrew words against 3.26M English — **6.2:1, about
+16% translated** (footnotes excluded; with them inline it read 20.4M/3.5M).
+*Chanah Ariel* (377K words), *Sha'arei Avodah* (167K) and
 others are 0%. *Sefer Etz Chaim*, the central Arizal text, is filed under
 Kabbalah: 344K Hebrew words, 30K English (~9%). No Yiddish Chassidus is present
 at all.
